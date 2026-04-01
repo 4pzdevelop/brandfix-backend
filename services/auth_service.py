@@ -18,6 +18,9 @@ load_dotenv()
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '60'))
+DEFAULT_BOOTSTRAP_ADMIN_EMAIL = 'admin@test.com'
+DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = '12345678'
+DEFAULT_BOOTSTRAP_ADMIN_COMPANY_ID = 'brandfix-default'
 
 if not JWT_SECRET_KEY:
     raise RuntimeError('JWT_SECRET_KEY must be configured in the environment.')
@@ -98,19 +101,35 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 
 def ensure_bootstrap_admin() -> None:
-    email = os.getenv('BOOTSTRAP_ADMIN_EMAIL')
-    password = os.getenv('BOOTSTRAP_ADMIN_PASSWORD')
-    company_id = os.getenv('BOOTSTRAP_ADMIN_COMPANY_ID')
-
-    if not all([email, password, company_id]):
-        return
+    email = os.getenv('BOOTSTRAP_ADMIN_EMAIL') or DEFAULT_BOOTSTRAP_ADMIN_EMAIL
+    password = os.getenv('BOOTSTRAP_ADMIN_PASSWORD') or DEFAULT_BOOTSTRAP_ADMIN_PASSWORD
+    company_id = os.getenv('BOOTSTRAP_ADMIN_COMPANY_ID') or DEFAULT_BOOTSTRAP_ADMIN_COMPANY_ID
 
     normalized_email = normalize_email(email)
     existing_user = users_collection.find_one({'email': normalized_email})
+    now = datetime.now(UTC)
+
     if existing_user:
+        updates: dict[str, Any] = {}
+        if existing_user.get('company_id') != company_id:
+            updates['company_id'] = company_id
+        if existing_user.get('role') != UserRole.ADMIN.value:
+            updates['role'] = UserRole.ADMIN.value
+        try:
+            password_matches = verify_password(password, existing_user.get('password_hash', ''))
+        except Exception:
+            password_matches = False
+        if not password_matches:
+            updates['password_hash'] = hash_password(password)
+
+        if updates:
+            updates['updated_at'] = now
+            users_collection.update_one(
+                {'_id': existing_user['_id']},
+                {'$set': updates},
+            )
         return
 
-    now = datetime.now(UTC)
     users_collection.insert_one(
         {
             'email': normalized_email,
