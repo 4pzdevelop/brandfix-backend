@@ -4,10 +4,10 @@ import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt
 from dotenv import load_dotenv
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pymongo.errors import DuplicateKeyError
 
 from database import db
@@ -25,7 +25,6 @@ DEFAULT_REGISTER_ROLE = UserRole.CLIENT.value
 if not JWT_SECRET_KEY:
     raise RuntimeError('JWT_SECRET_KEY must be configured in the environment.')
 
-pwd_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 users_collection = db['users']
 
 
@@ -34,11 +33,20 @@ def normalize_email(email: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    if not hashed_password:
+        return False
+
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8'),
+            hashed_password.encode('utf-8'),
+        )
+    except ValueError:
+        return False
 
 
 def serialize_user_document(document: dict[str, Any]) -> dict[str, Any]:
