@@ -1,0 +1,951 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  FINANCE
+  OPERATIONS
+  FIELD_EXECUTIVE
+  CLIENT
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StoreAmcStatus {
+  NONE
+  ACTIVE
+  EXPIRED
+}
+
+enum RecceStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+enum BoqStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum BoqApprovalStage {
+  DRAFT
+  INTERNAL_REVIEW
+  FINANCE_APPROVED
+  CLIENT_APPROVED
+  REJECTED
+}
+
+enum AmcStatus {
+  ACTIVE
+  EXPIRED
+  RENEWED
+}
+
+enum VisitFrequency {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum AuditStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+}
+
+enum ReportType {
+  RECCE
+  BOQ
+  AMC
+  AUDIT
+}
+
+enum ImageCategory {
+  SIGNAGE
+  VM
+  LIGHTING
+  BRANDING
+  OTHER
+}
+
+enum ApprovalActionType {
+  BOQ_APPROVAL
+  BUDGET_FREEZE
+  EXPENSE_APPROVAL
+  VENDOR_PO_APPROVAL
+  VENDOR_INVOICE_APPROVAL
+  EMERGENCY_EXPENSE_APPROVAL
+  PAYROLL_APPROVAL
+  BILLING_INVOICE_APPROVAL
+  PAYMENT_AUTHORIZATION
+  OVERRIDE_APPROVAL
+  PROJECT_CLOSURE
+}
+
+enum ApprovalRecordStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ESCALATED
+  AUTO_ESCALATED
+  POLICY_BREACH
+}
+
+enum BudgetBucketType {
+  MATERIAL
+  LABOUR
+  LOGISTICS
+  MISC
+}
+
+enum ExpenseStatus {
+  PENDING_FINANCE
+  BUDGET_BREACH
+  FINANCE_APPROVED
+  FINANCE_REJECTED
+  ESCALATED_ADMIN
+  ADMIN_APPROVED
+  ADMIN_REJECTED
+  EMERGENCY_PENDING_FINANCE
+  EMERGENCY_APPROVED
+  EMERGENCY_REJECTED
+  EMERGENCY_ESCALATED_ADMIN
+}
+
+enum VendorPoStatus {
+  DRAFT
+  PENDING_FINANCE
+  FINANCE_APPROVED
+  ISSUED
+  REJECTED
+}
+
+enum VendorInvoiceStatus {
+  SUBMITTED
+  PENDING_FINANCE
+  FINANCE_APPROVED
+  FINANCE_REJECTED
+  PENDING_ADMIN
+  ADMIN_APPROVED
+  ADMIN_REJECTED
+  PAYMENT_AUTHORIZED
+}
+
+enum PayrollApprovalStatus {
+  GENERATED
+  PENDING_FINANCE
+  FINANCE_APPROVED
+  FINANCE_REJECTED
+  PENDING_ADMIN
+  ADMIN_APPROVED
+  ADMIN_REJECTED
+}
+
+enum MilestoneStatus {
+  PLANNED
+  PENDING_FINANCE_APPROVAL
+  ISSUED
+  REJECTED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum ProjectClosureStatus {
+  OPEN
+  REQUESTED
+  FINANCE_VERIFIED
+  ADMIN_APPROVED
+  CLOSED
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ExecutionType {
+  VENDOR
+  INTERNAL
+  HYBRID
+}
+
+enum LedgerEntryType {
+  MATERIAL_PURCHASE
+  LABOUR_ATTENDANCE
+  VENDOR_INVOICE
+  MISC_EXPENSE
+  PAYROLL
+  BILLING
+  MANUAL_ADJUSTMENT
+}
+
+enum ReceivableStatus {
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum ExportType {
+  SALES_INVOICE
+  PURCHASE_BILL
+  PAYROLL_JOURNAL
+}
+
+model Company {
+  id                       String          @id @default(cuid())
+  name                     String
+  code                     String          @unique
+  status                   CompanyStatus   @default(ACTIVE)
+  minMarginPercent         Float           @default(20)
+  emergencyCapPercent      Float           @default(10)
+  emergencyPerExpenseLimit Float           @default(50000)
+  approvalThresholdAmount  Float           @default(150000)
+  defaultBillingTemplate   Json?
+  country                  String          @default("India")
+  state                    String?
+  city                     String?
+  postalCode               String?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  users                    User[]
+  clients                  Client[]
+  stores                   Store[]
+  projects                 Project[]
+  recces                   Recce[]
+  rateCards                RateCard[]
+  boqs                     Boq[]
+  amcs                     Amc[]
+  tasks                    Task[]
+  audits                   Audit[]
+  reports                  Report[]
+  requests                 Request[]
+  auditLogs                AuditLog[]
+  approvalRecords          ApprovalRecord[]
+  budgetBuckets            BudgetBucket[]
+  expenseRequests          ExpenseRequest[]
+  vendorPos                VendorPo[]
+  vendorInvoices           VendorInvoice[]
+  attendanceLogs           AttendanceLog[]
+  labourRateMasters        LabourRateMaster[]
+  payrollCycles            PayrollCycle[]
+  billingMilestones        BillingMilestone[]
+  projectClosures          ProjectClosure[]
+  chatMessages             ChatMessage[]
+  projectLedgers           ProjectLedger[]
+  receivables              Receivable[]
+  exportLogs               ExportLog[]
+  billingTemplates         BillingTemplate[]
+}
+
+model User {
+  id               String        @id @default(cuid())
+  companyId        String
+  name             String
+  email            String        @unique
+  passwordHash     String
+  role             UserRole
+  location         String?
+  clientId         String?
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  company          Company       @relation(fields: [companyId], references: [id])
+  client           Client?       @relation(fields: [clientId], references: [id])
+  requests         Request[]     @relation("RequestCreator")
+  createdRecces    Recce[]       @relation("RecceCreator")
+  assignedTasks    Task[]        @relation("TaskAssignee")
+  approvedBoqs     Boq[]         @relation("BoqApprover")
+  generatedReports Report[]      @relation("ReportGenerator")
+  auditLogs        AuditLog[]
+  sentMessages     ChatMessage[] @relation("ChatSender")
+  receivedMessages ChatMessage[] @relation("ChatReceiver")
+  requestedApprovals            ApprovalRecord[]  @relation("ApprovalRequestedBy")
+  approvedApprovals             ApprovalRecord[]  @relation("ApprovalApprovedBy")
+  financeReviewedBoqs           Boq[]             @relation("BoqFinanceReviewer")
+  adminApprovedBoqs             Boq[]             @relation("BoqAdminOnBehalf")
+  expenseRequests               ExpenseRequest[]  @relation("ExpenseRequestedBy")
+  financeReviewedExpenses       ExpenseRequest[]  @relation("ExpenseFinanceReviewer")
+  adminReviewedExpenses         ExpenseRequest[]  @relation("ExpenseAdminReviewer")
+  createdVendorPos              VendorPo[]        @relation("VendorPoCreator")
+  financeApprovedVendorPos      VendorPo[]        @relation("VendorPoFinanceApprover")
+  createdVendorInvoices         VendorInvoice[]   @relation("VendorInvoiceCreator")
+  financeReviewedVendorInvoices VendorInvoice[]   @relation("VendorInvoiceFinanceReviewer")
+  adminReviewedVendorInvoices   VendorInvoice[]   @relation("VendorInvoiceAdminReviewer")
+  attendanceLogs                AttendanceLog[]
+  generatedPayrollCycles        PayrollCycle[]    @relation("PayrollGeneratedBy")
+  financeReviewedPayrollCycles  PayrollCycle[]    @relation("PayrollFinanceReviewer")
+  adminReviewedPayrollCycles    PayrollCycle[]    @relation("PayrollAdminApprover")
+  triggeredMilestones           BillingMilestone[] @relation("MilestoneTriggeredBy")
+  financeReviewedMilestones     BillingMilestone[] @relation("MilestoneFinanceReviewer")
+  closureRequestedProjects      ProjectClosure[]  @relation("ClosureRequestedBy")
+  closureFinanceVerifiedProjects ProjectClosure[] @relation("ClosureFinanceVerifier")
+  closureAdminApprovedProjects  ProjectClosure[]  @relation("ClosureAdminApprover")
+  createdProjects               Project[]          @relation("ProjectCreator")
+  ledgerEntries                 ProjectLedger[]    @relation("LedgerEntryCreator")
+  exportedLogs                  ExportLog[]        @relation("ExportedBy")
+
+  @@index([companyId, role])
+}
+
+model Request {
+  id          String   @id @default(cuid())
+  companyId   String
+  createdById String
+  companyName String
+  issueTitle  String
+  description String
+  category    String?
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id])
+  createdBy   User     @relation("RequestCreator", fields: [createdById], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([companyId, status])
+  @@index([createdById, createdAt])
+}
+
+model Client {
+  id             String       @id @default(cuid())
+  companyId      String
+  name           String
+  code           String       @unique
+  industry       String?
+  primaryContact String?
+  status         ClientStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  company        Company      @relation(fields: [companyId], references: [id])
+  users          User[]
+  stores         Store[]
+  amcs           Amc[]
+  projects       Project[]
+
+  @@index([companyId, status])
+}
+
+model Store {
+  id           String         @id @default(cuid())
+  companyId    String
+  clientId     String
+  name         String
+  code         String         @unique
+  storeType    String
+  addressLine1 String
+  city         String
+  state        String
+  postalCode   String
+  amcStatus    StoreAmcStatus @default(NONE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  company      Company        @relation(fields: [companyId], references: [id])
+  client       Client         @relation(fields: [clientId], references: [id])
+  recces       Recce[]
+  amcs         Amc[]
+  tasks        Task[]
+  audits       Audit[]
+
+  @@index([companyId, city])
+  @@index([clientId])
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  companyId      String
+  projectCode    String        @unique
+  title          String
+  clientId       String?
+  executionType  ExecutionType @default(HYBRID)
+  status         String        @default("LEAD")
+  poNumber       String?
+  poValue        Float?
+  baselineCost   Float?
+  budgetFrozenAt DateTime?
+  createdById    String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  company        Company       @relation(fields: [companyId], references: [id])
+  client         Client?       @relation(fields: [clientId], references: [id])
+  createdBy      User          @relation("ProjectCreator", fields: [createdById], references: [id])
+  ledgerEntries  ProjectLedger[]
+  receivables    Receivable[]
+
+  @@index([companyId, status])
+  @@index([companyId, projectCode])
+}
+
+model Recce {
+  id               String       @id @default(cuid())
+  companyId        String
+  storeId          String
+  visitDate        DateTime
+  status           RecceStatus  @default(DRAFT)
+  notes            String?
+  conditionSummary Json
+  measurements     Json
+  createdById      String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  company          Company      @relation(fields: [companyId], references: [id])
+  store            Store        @relation(fields: [storeId], references: [id])
+  createdBy        User         @relation("RecceCreator", fields: [createdById], references: [id])
+  images           RecceImage[]
+  boqs             Boq[]
+
+  @@index([companyId, status])
+  @@index([storeId])
+  @@index([status])
+}
+
+model RecceImage {
+  id        String        @id @default(cuid())
+  recceId   String
+  fileUrl   String
+  category  ImageCategory
+  timestamp DateTime      @default(now())
+  recce     Recce         @relation(fields: [recceId], references: [id], onDelete: Cascade)
+
+  @@index([recceId])
+}
+
+model RateCard {
+  id        String   @id @default(cuid())
+  companyId String
+  itemCode  String
+  itemName  String
+  unitRate  Float
+  unit      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, itemCode])
+  @@index([companyId, isActive])
+}
+
+model Boq {
+  id           String    @id @default(cuid())
+  companyId     String
+  recceId      String
+  projectCode  String?
+  version      Int       @default(1)
+  status       BoqStatus @default(DRAFT)
+  approvalStage BoqApprovalStage @default(DRAFT)
+  internalApprovalId String?
+  subtotal     Float
+  taxAmount    Float
+  totalAmount  Float
+  approvedById String?
+  financeReviewComment String?
+  clientReviewComment String?
+  financeReviewedById String?
+  financeReviewedAt   DateTime?
+  clientApprovedAt    DateTime?
+  approvedOnBehalfById String?
+  poNumber            String?
+  budgetFrozenAt      DateTime?
+  revenueLockedAmount Float?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  company      Company   @relation(fields: [companyId], references: [id])
+  recce        Recce     @relation(fields: [recceId], references: [id])
+  approvedBy   User?     @relation("BoqApprover", fields: [approvedById], references: [id])
+  financeReviewedBy User? @relation("BoqFinanceReviewer", fields: [financeReviewedById], references: [id])
+  approvedOnBehalfBy User? @relation("BoqAdminOnBehalf", fields: [approvedOnBehalfById], references: [id])
+  items        BoqItem[]
+
+  @@index([companyId, status])
+  @@index([recceId])
+  @@index([status])
+  @@index([projectCode])
+  @@index([approvalStage])
+}
+
+model BoqItem {
+  id            String @id @default(cuid())
+  boqId         String
+  itemCode      String
+  itemName      String
+  quantity      Float
+  unitRate      Float
+  marginPercent Float?
+  total         Float
+  boq           Boq    @relation(fields: [boqId], references: [id], onDelete: Cascade)
+
+  @@index([boqId])
+}
+
+model Amc {
+  id             String         @id @default(cuid())
+  companyId      String
+  clientId       String
+  storeId        String
+  startDate      DateTime
+  endDate        DateTime
+  visitFrequency VisitFrequency
+  coverageTypes  Json
+  status         AmcStatus      @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  company        Company        @relation(fields: [companyId], references: [id])
+  client         Client         @relation(fields: [clientId], references: [id])
+  store          Store          @relation(fields: [storeId], references: [id])
+  tasks          Task[]
+
+  @@index([companyId, status])
+  @@index([clientId])
+  @@index([storeId])
+  @@index([status])
+}
+
+model Task {
+  id             String      @id @default(cuid())
+  companyId      String
+  storeId        String
+  amcId          String?
+  title          String
+  description    String
+  dueDate        DateTime
+  status         TaskStatus  @default(PENDING)
+  assignedToId   String
+  completionNote String?
+  completedAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  company        Company     @relation(fields: [companyId], references: [id])
+  store          Store       @relation(fields: [storeId], references: [id])
+  amc            Amc?        @relation(fields: [amcId], references: [id])
+  assignedTo     User        @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  images         TaskImage[]
+
+  @@index([companyId, status])
+  @@index([storeId])
+  @@index([status])
+  @@index([assignedToId])
+}
+
+model TaskImage {
+  id        String   @id @default(cuid())
+  taskId    String
+  fileUrl   String
+  stage     String
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model Audit {
+  id         String      @id @default(cuid())
+  companyId  String
+  storeId    String
+  auditDate  DateTime
+  status     AuditStatus @default(DRAFT)
+  totalScore Int
+  maxScore   Int
+  summary    String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  company    Company     @relation(fields: [companyId], references: [id])
+  store      Store       @relation(fields: [storeId], references: [id])
+  items      AuditItem[]
+
+  @@index([companyId, status])
+  @@index([storeId])
+  @@index([status])
+}
+
+model AuditItem {
+  id       String  @id @default(cuid())
+  auditId  String
+  key      String
+  label    String
+  score    Int
+  maxScore Int
+  remarks  String?
+  audit    Audit   @relation(fields: [auditId], references: [id], onDelete: Cascade)
+
+  @@index([auditId])
+}
+
+model Report {
+  id            String     @id @default(cuid())
+  companyId     String
+  reportType    ReportType
+  referenceId   String
+  fileUrl       String
+  generatedById String
+  generatedAt   DateTime   @default(now())
+  company       Company    @relation(fields: [companyId], references: [id])
+  generatedBy   User       @relation("ReportGenerator", fields: [generatedById], references: [id])
+
+  @@index([companyId, reportType])
+  @@index([reportType])
+  @@index([referenceId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  companyId  String
+  userId     String
+  action     String
+  entityType String
+  entityId   String
+  previous   Json?
+  next       Json?
+  createdAt  DateTime @default(now())
+  company    Company  @relation(fields: [companyId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@index([userId])
+  @@index([entityType, entityId])
+}
+
+model ApprovalRecord {
+  id           String               @id @default(cuid())
+  companyId     String
+  approvalId   String               @unique
+  projectCode  String
+  actionType   ApprovalActionType
+  requestedById String
+  approvedById String?
+  status       ApprovalRecordStatus @default(PENDING)
+  comments     String?
+  metadata     Json?
+  createdAt    DateTime             @default(now())
+  decidedAt    DateTime?
+  company      Company              @relation(fields: [companyId], references: [id])
+  requestedBy  User                 @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  approvedBy   User?                @relation("ApprovalApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([companyId, status])
+  @@index([projectCode, actionType])
+  @@index([status])
+}
+
+model BudgetBucket {
+  id              String         @id @default(cuid())
+  companyId       String
+  projectCode     String
+  bucketType      BudgetBucketType
+  approvedBudget  Float          @default(0)
+  approvedExpense Float          @default(0)
+  actualPaid      Float          @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  company         Company        @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, projectCode, bucketType])
+  @@index([companyId, projectCode])
+  @@index([projectCode])
+}
+
+model ExpenseRequest {
+  id                   String       @id @default(cuid())
+  companyId            String
+  projectCode          String
+  category             String
+  linkedElement        String?
+  vendor               String
+  amount               Float
+  quotationAttachment  String?
+  justification        String
+  requestedById        String
+  status               ExpenseStatus @default(PENDING_FINANCE)
+  approvalId           String?
+  isEmergency          Boolean      @default(false)
+  emergencyDeadlineAt  DateTime?
+  financeReviewedById  String?
+  adminReviewedById    String?
+  reviewComment        String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  company              Company      @relation(fields: [companyId], references: [id])
+  requestedBy          User         @relation("ExpenseRequestedBy", fields: [requestedById], references: [id])
+  financeReviewedBy    User?        @relation("ExpenseFinanceReviewer", fields: [financeReviewedById], references: [id])
+  adminReviewedBy      User?        @relation("ExpenseAdminReviewer", fields: [adminReviewedById], references: [id])
+  vendorPos            VendorPo[]
+
+  @@index([companyId, status])
+  @@index([projectCode, status])
+}
+
+model VendorPo {
+  id                 String       @id @default(cuid())
+  companyId          String
+  projectCode        String
+  expenseRequestId   String?
+  vendor             String
+  amount             Float
+  status             VendorPoStatus @default(DRAFT)
+  approvalId         String?
+  createdById        String
+  financeApprovedById String?
+  issuedAt           DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  company            Company       @relation(fields: [companyId], references: [id])
+  createdBy          User          @relation("VendorPoCreator", fields: [createdById], references: [id])
+  financeApprovedBy  User?         @relation("VendorPoFinanceApprover", fields: [financeApprovedById], references: [id])
+  expenseRequest     ExpenseRequest? @relation(fields: [expenseRequestId], references: [id])
+  invoices           VendorInvoice[]
+
+  @@index([companyId, status])
+  @@index([projectCode, status])
+}
+
+model VendorInvoice {
+  id                    String             @id @default(cuid())
+  companyId             String
+  projectCode           String
+  vendorPoId            String
+  invoiceNumber         String
+  amount                Float
+  status                VendorInvoiceStatus @default(SUBMITTED)
+  approvalId            String?
+  createdById           String
+  financeReviewedById   String?
+  adminReviewedById     String?
+  paymentAuthorizationId String?
+  paymentAuthorizedAt   DateTime?
+  paidAt                DateTime?
+  reviewComment         String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  company               Company             @relation(fields: [companyId], references: [id])
+  vendorPo              VendorPo            @relation(fields: [vendorPoId], references: [id])
+  createdBy             User                @relation("VendorInvoiceCreator", fields: [createdById], references: [id])
+  financeReviewedBy     User?               @relation("VendorInvoiceFinanceReviewer", fields: [financeReviewedById], references: [id])
+  adminReviewedBy       User?               @relation("VendorInvoiceAdminReviewer", fields: [adminReviewedById], references: [id])
+
+  @@index([companyId, status])
+  @@index([projectCode, status])
+  @@index([invoiceNumber])
+}
+
+model AttendanceLog {
+  id           String   @id @default(cuid())
+  companyId    String
+  projectCode  String
+  userId       String
+  roleLabel    String
+  hours        Float
+  workDate     DateTime
+  latitude     Float?
+  longitude    Float?
+  locationText String?
+  markedAt     DateTime @default(now())
+  company      Company  @relation(fields: [companyId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([companyId, workDate])
+  @@index([projectCode, workDate])
+  @@index([userId, workDate])
+}
+
+model LabourRateMaster {
+  id         String   @id @default(cuid())
+  companyId  String
+  roleLabel  String
+  hourlyRate Float
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  company    Company  @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, roleLabel])
+  @@index([companyId, isActive])
+}
+
+model PayrollCycle {
+  id                  String               @id @default(cuid())
+  companyId           String
+  projectCode         String
+  cycleMonth          String
+  status              PayrollApprovalStatus @default(GENERATED)
+  totalHours          Float
+  totalAmount         Float
+  approvalId          String?
+  generatedById       String
+  financeReviewedById String?
+  adminReviewedById   String?
+  financeComment      String?
+  adminComment        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  company             Company              @relation(fields: [companyId], references: [id])
+  generatedBy         User                 @relation("PayrollGeneratedBy", fields: [generatedById], references: [id])
+  financeReviewedBy   User?                @relation("PayrollFinanceReviewer", fields: [financeReviewedById], references: [id])
+  adminReviewedBy     User?                @relation("PayrollAdminApprover", fields: [adminReviewedById], references: [id])
+
+  @@unique([companyId, projectCode, cycleMonth])
+  @@index([companyId, status])
+  @@index([projectCode, status])
+}
+
+model BillingMilestone {
+  id                  String          @id @default(cuid())
+  companyId           String
+  projectCode         String
+  label               String
+  milestonePercent    Float
+  milestoneAmount     Float
+  gstPercent          Float           @default(18)
+  gstAmount           Float
+  invoiceTotal        Float
+  status              MilestoneStatus @default(PLANNED)
+  dueDate             DateTime?
+  invoiceNumber       String?
+  approvalId          String?
+  triggeredById       String?
+  financeReviewedById String?
+  reviewComment       String?
+  paidAmount          Float           @default(0)
+  issuedAt            DateTime?
+  paidAt              DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  company             Company         @relation(fields: [companyId], references: [id])
+  triggeredBy         User?           @relation("MilestoneTriggeredBy", fields: [triggeredById], references: [id])
+  financeReviewedBy   User?           @relation("MilestoneFinanceReviewer", fields: [financeReviewedById], references: [id])
+
+  @@index([companyId, status])
+  @@index([projectCode, status])
+}
+
+model ProjectClosure {
+  id                 String               @id @default(cuid())
+  companyId          String
+  projectCode        String
+  status             ProjectClosureStatus @default(OPEN)
+  requestedById      String?
+  financeVerifiedById String?
+  adminApprovedById  String?
+  requestComment     String?
+  financeComment     String?
+  adminComment       String?
+  requestedAt        DateTime?
+  financeVerifiedAt  DateTime?
+  adminApprovedAt    DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  company            Company              @relation(fields: [companyId], references: [id])
+  requestedBy        User?                @relation("ClosureRequestedBy", fields: [requestedById], references: [id])
+  financeVerifiedBy  User?                @relation("ClosureFinanceVerifier", fields: [financeVerifiedById], references: [id])
+  adminApprovedBy    User?                @relation("ClosureAdminApprover", fields: [adminApprovedById], references: [id])
+
+  @@unique([companyId, projectCode])
+  @@index([companyId, status])
+  @@index([status])
+}
+
+model ChatMessage {
+  id         String    @id @default(cuid())
+  companyId  String
+  senderId   String
+  receiverId String
+  message    String
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+  company    Company   @relation(fields: [companyId], references: [id])
+  sender     User      @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User      @relation("ChatReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([receiverId, createdAt])
+}
+
+model BillingTemplate {
+  id         String   @id @default(cuid())
+  companyId  String
+  name       String
+  percentages Json
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  company    Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, isDefault])
+}
+
+model ProjectLedger {
+  id           String          @id @default(cuid())
+  companyId    String
+  projectCode  String
+  entryType    LedgerEntryType
+  amount       Float
+  notes        String?
+  approvalId   String?
+  referenceType String?
+  referenceId  String?
+  createdById  String?
+  createdAt    DateTime        @default(now())
+  company      Company         @relation(fields: [companyId], references: [id])
+  project      Project         @relation(fields: [projectCode], references: [projectCode], onDelete: Cascade)
+  createdBy    User?           @relation("LedgerEntryCreator", fields: [createdById], references: [id])
+
+  @@index([companyId, projectCode, createdAt])
+  @@index([projectCode, entryType])
+}
+
+model Receivable {
+  id                 String           @id @default(cuid())
+  companyId          String
+  projectCode        String
+  billingMilestoneId String?
+  invoiceNumber      String
+  invoiceDate        DateTime
+  dueDate            DateTime
+  taxableValue       Float
+  gstAmount          Float
+  totalAmount        Float
+  receivedAmount     Float            @default(0)
+  status             ReceivableStatus @default(OPEN)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  company            Company          @relation(fields: [companyId], references: [id])
+  project            Project          @relation(fields: [projectCode], references: [projectCode], onDelete: Cascade)
+
+  @@unique([companyId, invoiceNumber])
+  @@index([companyId, status])
+  @@index([projectCode, dueDate])
+}
+
+model ExportLog {
+  id          String     @id @default(cuid())
+  companyId   String
+  exportType  ExportType
+  exportKey   String
+  exportedAt  DateTime   @default(now())
+  exportedById String?
+  company     Company    @relation(fields: [companyId], references: [id])
+  exportedBy  User?      @relation("ExportedBy", fields: [exportedById], references: [id])
+
+  @@unique([companyId, exportType, exportKey])
+  @@index([companyId, exportedAt])
+}

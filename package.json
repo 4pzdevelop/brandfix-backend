@@ -1,0 +1,28 @@
+{
+  "name": "brandfix-platform",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@brandfix/web",
+    "dev:web": "npm run dev --workspace=@brandfix/web",
+    "dev:api": "npm run dev --workspace=@brandfix/api",
+    "dev:stack": "npm run dev:api & npm run dev:web",
+    "build:web:android": "npm run build --workspace=@brandfix/web",
+    "cap:add:android": "npx cap add android",
+    "cap:sync": "npx cap sync android",
+    "android:prepare": "npm run build:web:android && npm run cap:sync",
+    "android:apk": "npm run android:prepare && cd android && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ANDROID_HOME=\"$HOME/Library/Android/sdk\" ANDROID_SDK_ROOT=\"$HOME/Library/Android/sdk\" ./gradlew assembleDebug",
+    "build": "npm run build --workspace=@brandfix/types && npm run build --workspace=@brandfix/api && npm run build --workspace=@brandfix/web",
+    "lint": "npm run lint --workspace=@brandfix/web",
+    "typecheck": "npm run typecheck --workspace=@brandfix/types && npm run typecheck --workspace=@brandfix/api && npm run typecheck --workspace=@brandfix/web"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2"
+  }
+}

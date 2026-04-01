@@ -1,7 +1,11 @@
-.DS_Store
+node_modules
+.next
+dist
+build
+coverage
 .env
-__pycache__/
-.pytest_cache/
-.ruff_cache/
-.venv/
-venv/
+.env.*
+!.env.example
+npm-debug.log*
+.DS_Store
+apps/api/prisma/dev.db
