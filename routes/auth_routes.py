@@ -5,13 +5,24 @@ from typing import Any
 from fastapi import APIRouter, Request, status
 
 from middleware.auth_middleware import get_current_user
-from models.auth_model import LoginRequest, TokenResponse
+from models.auth_model import LoginRequest, RegisterRequest, TokenResponse
 from models.response_model import DataResponse
 from models.user_model import UserResponse
-from services.auth_service import authenticate_user, create_access_token, serialize_user_document
+from services.auth_service import (
+    authenticate_user,
+    create_access_token,
+    register_user,
+    serialize_user_document,
+)
 
 
 router = APIRouter(prefix='/auth', tags=['Auth'])
+
+
+@router.post('/register', response_model=DataResponse[UserResponse], status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest) -> dict[str, Any]:
+    user = register_user(payload.email, payload.password)
+    return {'data': serialize_user_document(user)}
 
 
 @router.post('/login', response_model=DataResponse[TokenResponse], status_code=status.HTTP_200_OK)

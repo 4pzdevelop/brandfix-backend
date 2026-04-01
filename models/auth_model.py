@@ -5,9 +5,16 @@ from pydantic import Field
 from models.base_model import APIModel
 from models.user_model import UserResponse
 
+EMAIL_PATTERN = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'
+
 
 class LoginRequest(APIModel):
-    email: str = Field(min_length=5, max_length=255)
+    email: str = Field(min_length=5, max_length=255, pattern=EMAIL_PATTERN)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class RegisterRequest(APIModel):
+    email: str = Field(min_length=5, max_length=255, pattern=EMAIL_PATTERN)
     password: str = Field(min_length=8, max_length=128)
 
 

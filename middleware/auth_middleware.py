@@ -17,6 +17,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.public_paths = {
             self.api_prefix,
             f'{self.api_prefix}/health',
+            f'{self.api_prefix}/auth/register',
             f'{self.api_prefix}/auth/login',
         }
 

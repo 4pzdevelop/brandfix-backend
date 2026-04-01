@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from pymongo.errors import DuplicateKeyError
 
 from database import db
 from db_utils import parse_object_id, serialize_document
@@ -21,6 +22,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '60')
 DEFAULT_BOOTSTRAP_ADMIN_EMAIL = 'admin@test.com'
 DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = '12345678'
 DEFAULT_BOOTSTRAP_ADMIN_COMPANY_ID = 'brandfix-default'
+DEFAULT_REGISTER_COMPANY_ID = os.getenv('DEFAULT_REGISTER_COMPANY_ID') or DEFAULT_BOOTSTRAP_ADMIN_COMPANY_ID
+DEFAULT_REGISTER_ROLE = UserRole.CLIENT.value
 
 if not JWT_SECRET_KEY:
     raise RuntimeError('JWT_SECRET_KEY must be configured in the environment.')
@@ -65,6 +68,36 @@ def authenticate_user(email: str, password: str) -> dict[str, Any]:
             detail='Invalid email or password.',
         )
     return user
+
+
+def register_user(email: str, password: str) -> dict[str, Any]:
+    normalized_email = normalize_email(email)
+    if get_user_by_email(normalized_email) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='User already exists.',
+        )
+
+    now = datetime.now(UTC)
+    document = {
+        'email': normalized_email,
+        'password_hash': hash_password(password),
+        'role': DEFAULT_REGISTER_ROLE,
+        'company_id': DEFAULT_REGISTER_COMPANY_ID,
+        'created_at': now,
+        'updated_at': now,
+    }
+
+    try:
+        result = users_collection.insert_one(document)
+    except DuplicateKeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='User already exists.',
+        ) from exc
+
+    document['_id'] = result.inserted_id
+    return document
 
 
 def create_access_token(user: dict[str, Any]) -> tuple[str, int]:
