@@ -3,16 +3,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from db_utils import (
+    build_company_scoped_query,
+    get_company_scoped_document_or_404,
+    get_company_scoped_request_or_404,
     get_collection,
-    get_document_or_404,
-    get_request_or_404,
-    parse_object_id,
     serialize_document,
     sync_request_workflow_state,
 )
+from middleware.auth_middleware import get_current_user, require_roles
 from models.work_order_model import (
     FinalReportCreate,
     WorkOrderCreate,
@@ -20,6 +21,7 @@ from models.work_order_model import (
     WorkOrderStatus,
     WorkOrderUpdate,
 )
+from models.user_model import UserRole
 from services.notification_service import publish_workflow_event
 
 
@@ -27,9 +29,11 @@ router = APIRouter(prefix="/work-orders", tags=["Work Orders"])
 
 
 @router.post("", response_model=WorkOrderResponse, status_code=status.HTTP_201_CREATED)
-def create_work_order(payload: WorkOrderCreate) -> dict[str, Any]:
-    get_request_or_404(payload.request_id)
-    request_object_id = parse_object_id(payload.request_id, "request")
+def create_work_order(payload: WorkOrderCreate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN)
+    request_document = get_company_scoped_request_or_404(payload.request_id, current_user['company_id'])
+    request_object_id = request_document['_id']
 
     boq = get_collection("boq").find_one({"request_id": request_object_id})
     if boq is None:
@@ -80,25 +84,37 @@ def create_work_order(payload: WorkOrderCreate) -> dict[str, Any]:
 
 @router.get("", response_model=list[WorkOrderResponse])
 def list_work_orders(
+    request: Request,
     request_id: str | None = Query(default=None, alias="requestId"),
 ) -> list[dict[str, Any]]:
-    query: dict[str, Any] = {}
-    if request_id:
-        query["request_id"] = parse_object_id(request_id, "request")
-
+    current_user = get_current_user(request)
+    query = build_company_scoped_query(current_user['company_id'], request_id)
     cursor = get_collection("work_orders").find(query).sort("created_at", -1)
     return [serialize_document(document) for document in cursor]
 
 
 @router.get("/{work_order_id}", response_model=WorkOrderResponse)
-def get_work_order(work_order_id: str) -> dict[str, Any]:
-    work_order = get_document_or_404("work_orders", work_order_id, "work order")
+def get_work_order(work_order_id: str, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    work_order = get_company_scoped_document_or_404(
+        'work_orders',
+        work_order_id,
+        'work order',
+        current_user['company_id'],
+    )
     return serialize_document(work_order)
 
 
 @router.put("/{work_order_id}", response_model=WorkOrderResponse)
-def update_work_order(work_order_id: str, payload: WorkOrderUpdate) -> dict[str, Any]:
-    work_order = get_document_or_404("work_orders", work_order_id, "work order")
+def update_work_order(work_order_id: str, payload: WorkOrderUpdate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FIELD)
+    work_order = get_company_scoped_document_or_404(
+        'work_orders',
+        work_order_id,
+        'work order',
+        current_user['company_id'],
+    )
     request_id = str(work_order["request_id"])
 
     invoice = get_collection("invoices").find_one({"request_id": work_order["request_id"]})
@@ -127,15 +143,27 @@ def update_work_order(work_order_id: str, payload: WorkOrderUpdate) -> dict[str,
         {"$set": update_fields},
     )
 
-    updated_work_order = get_document_or_404("work_orders", work_order_id, "work order")
+    updated_work_order = get_company_scoped_document_or_404(
+        'work_orders',
+        work_order_id,
+        'work order',
+        current_user['company_id'],
+    )
     sync_request_workflow_state(request_id)
     publish_workflow_event("work_order", "updated", request_id, {"work_order_id": work_order_id})
     return serialize_document(updated_work_order)
 
 
 @router.post("/{work_order_id}/final-report", response_model=WorkOrderResponse)
-def submit_final_report(work_order_id: str, payload: FinalReportCreate) -> dict[str, Any]:
-    work_order = get_document_or_404("work_orders", work_order_id, "work order")
+def submit_final_report(work_order_id: str, payload: FinalReportCreate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FIELD)
+    work_order = get_company_scoped_document_or_404(
+        'work_orders',
+        work_order_id,
+        'work order',
+        current_user['company_id'],
+    )
     request_id = str(work_order["request_id"])
 
     invoice = get_collection("invoices").find_one({"request_id": work_order["request_id"]})
@@ -162,7 +190,12 @@ def submit_final_report(work_order_id: str, payload: FinalReportCreate) -> dict[
         {"$set": update_fields},
     )
 
-    updated_work_order = get_document_or_404("work_orders", work_order_id, "work order")
+    updated_work_order = get_company_scoped_document_or_404(
+        'work_orders',
+        work_order_id,
+        'work order',
+        current_user['company_id'],
+    )
     sync_request_workflow_state(request_id)
     publish_workflow_event(
         "final_report",
@@ -174,8 +207,15 @@ def submit_final_report(work_order_id: str, payload: FinalReportCreate) -> dict[
 
 
 @router.delete("/{work_order_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_work_order(work_order_id: str) -> Response:
-    work_order = get_document_or_404("work_orders", work_order_id, "work order")
+def delete_work_order(work_order_id: str, request: Request) -> Response:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN)
+    work_order = get_company_scoped_document_or_404(
+        'work_orders',
+        work_order_id,
+        'work order',
+        current_user['company_id'],
+    )
     request_id = str(work_order["request_id"])
 
     get_collection("invoices").delete_many({"request_id": work_order["request_id"]})

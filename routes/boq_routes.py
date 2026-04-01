@@ -3,16 +3,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from db_utils import (
+    build_company_scoped_query,
+    get_company_scoped_document_or_404,
+    get_company_scoped_request_or_404,
     get_collection,
-    get_document_or_404,
-    get_request_or_404,
-    parse_object_id,
     serialize_document,
     sync_request_workflow_state,
 )
+from middleware.auth_middleware import get_current_user, require_roles
 from models.boq_model import (
     BoqApprovalAction,
     BoqCreate,
@@ -20,6 +21,7 @@ from models.boq_model import (
     BoqResponse,
     BoqUpdate,
 )
+from models.user_model import UserRole
 from services.calculation_service import build_boq_items, recalculate_boq
 from services.notification_service import publish_workflow_event
 
@@ -59,9 +61,11 @@ def merge_boq_item_updates(
 
 
 @router.post("", response_model=BoqResponse, status_code=status.HTTP_201_CREATED)
-def create_boq(payload: BoqCreate) -> dict[str, Any]:
-    get_request_or_404(payload.request_id)
-    request_object_id = parse_object_id(payload.request_id, "request")
+def create_boq(payload: BoqCreate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN)
+    request_document = get_company_scoped_request_or_404(payload.request_id, current_user['company_id'])
+    request_object_id = request_document['_id']
 
     recce = get_collection("recce").find_one({"request_id": request_object_id})
     if recce is None:
@@ -104,24 +108,28 @@ def create_boq(payload: BoqCreate) -> dict[str, Any]:
 
 
 @router.get("", response_model=list[BoqResponse])
-def list_boq(request_id: str | None = Query(default=None, alias="requestId")) -> list[dict[str, Any]]:
-    query: dict[str, Any] = {}
-    if request_id:
-        query["request_id"] = parse_object_id(request_id, "request")
-
+def list_boq(
+    request: Request,
+    request_id: str | None = Query(default=None, alias="requestId"),
+) -> list[dict[str, Any]]:
+    current_user = get_current_user(request)
+    query = build_company_scoped_query(current_user['company_id'], request_id)
     cursor = get_collection("boq").find(query).sort("created_at", -1)
     return [serialize_document(document) for document in cursor]
 
 
 @router.get("/{boq_id}", response_model=BoqResponse)
-def get_boq(boq_id: str) -> dict[str, Any]:
-    boq = get_document_or_404("boq", boq_id, "boq")
+def get_boq(boq_id: str, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     return serialize_document(boq)
 
 
 @router.put("/{boq_id}", response_model=BoqResponse)
-def update_boq(boq_id: str, payload: BoqUpdate) -> dict[str, Any]:
-    boq = get_document_or_404("boq", boq_id, "boq")
+def update_boq(boq_id: str, payload: BoqUpdate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN)
+    boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     request_id = str(boq["request_id"])
 
     update_fields = payload.model_dump(exclude_none=True)
@@ -153,15 +161,17 @@ def update_boq(boq_id: str, payload: BoqUpdate) -> dict[str, Any]:
         {"$set": update_fields},
     )
 
-    updated_boq = get_document_or_404("boq", boq_id, "boq")
+    updated_boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     sync_request_workflow_state(request_id)
     publish_workflow_event("boq", "updated", request_id, {"boq_id": boq_id})
     return serialize_document(updated_boq)
 
 
 @router.post("/{boq_id}/approve", response_model=BoqResponse)
-def approve_boq(boq_id: str, payload: BoqApprovalAction) -> dict[str, Any]:
-    boq = get_document_or_404("boq", boq_id, "boq")
+def approve_boq(boq_id: str, payload: BoqApprovalAction, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FINANCE)
+    boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     request_id = str(boq["request_id"])
 
     update_fields = {
@@ -173,15 +183,17 @@ def approve_boq(boq_id: str, payload: BoqApprovalAction) -> dict[str, Any]:
     }
     get_collection("boq").update_one({"_id": boq["_id"]}, {"$set": update_fields})
 
-    updated_boq = get_document_or_404("boq", boq_id, "boq")
+    updated_boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     sync_request_workflow_state(request_id)
     publish_workflow_event("boq", "approved", request_id, {"boq_id": boq_id})
     return serialize_document(updated_boq)
 
 
 @router.post("/{boq_id}/reject", response_model=BoqResponse)
-def reject_boq(boq_id: str, payload: BoqRejectionAction) -> dict[str, Any]:
-    boq = get_document_or_404("boq", boq_id, "boq")
+def reject_boq(boq_id: str, payload: BoqRejectionAction, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FINANCE)
+    boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     request_id = str(boq["request_id"])
 
     existing_work_order = get_collection("work_orders").find_one({"request_id": boq["request_id"]})
@@ -200,15 +212,17 @@ def reject_boq(boq_id: str, payload: BoqRejectionAction) -> dict[str, Any]:
     }
     get_collection("boq").update_one({"_id": boq["_id"]}, {"$set": update_fields})
 
-    updated_boq = get_document_or_404("boq", boq_id, "boq")
+    updated_boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     sync_request_workflow_state(request_id)
     publish_workflow_event("boq", "rejected", request_id, {"boq_id": boq_id})
     return serialize_document(updated_boq)
 
 
 @router.delete("/{boq_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_boq(boq_id: str) -> Response:
-    boq = get_document_or_404("boq", boq_id, "boq")
+def delete_boq(boq_id: str, request: Request) -> Response:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN)
+    boq = get_company_scoped_document_or_404('boq', boq_id, 'boq', current_user['company_id'])
     request_id = str(boq["request_id"])
 
     get_collection("invoices").delete_many({"request_id": boq["request_id"]})

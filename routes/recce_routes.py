@@ -3,17 +3,20 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from db_utils import (
+    build_company_scoped_query,
+    get_company_scoped_document_or_404,
+    get_company_scoped_request_or_404,
     get_collection,
-    get_document_or_404,
-    get_request_or_404,
     parse_object_id,
     serialize_document,
     sync_request_workflow_state,
 )
+from middleware.auth_middleware import get_current_user, require_roles
 from models.recce_model import RecceCreate, RecceResponse, RecceUpdate
+from models.user_model import UserRole
 from services.notification_service import publish_workflow_event
 
 
@@ -21,9 +24,11 @@ router = APIRouter(prefix="/recce", tags=["Recce"])
 
 
 @router.post("", response_model=RecceResponse, status_code=status.HTTP_201_CREATED)
-def create_recce(payload: RecceCreate) -> dict[str, Any]:
-    get_request_or_404(payload.request_id)
-    request_object_id = parse_object_id(payload.request_id, "request")
+def create_recce(payload: RecceCreate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FIELD)
+    request_document = get_company_scoped_request_or_404(payload.request_id, current_user['company_id'])
+    request_object_id = request_document['_id']
 
     existing_recce = get_collection("recce").find_one({"request_id": request_object_id})
     if existing_recce:
@@ -48,24 +53,28 @@ def create_recce(payload: RecceCreate) -> dict[str, Any]:
 
 
 @router.get("", response_model=list[RecceResponse])
-def list_recce(request_id: str | None = Query(default=None, alias="requestId")) -> list[dict[str, Any]]:
-    query: dict[str, Any] = {}
-    if request_id:
-        query["request_id"] = parse_object_id(request_id, "request")
-
+def list_recce(
+    request: Request,
+    request_id: str | None = Query(default=None, alias="requestId"),
+) -> list[dict[str, Any]]:
+    current_user = get_current_user(request)
+    query = build_company_scoped_query(current_user['company_id'], request_id)
     cursor = get_collection("recce").find(query).sort("created_at", -1)
     return [serialize_document(document) for document in cursor]
 
 
 @router.get("/{recce_id}", response_model=RecceResponse)
-def get_recce(recce_id: str) -> dict[str, Any]:
-    recce = get_document_or_404("recce", recce_id, "recce")
+def get_recce(recce_id: str, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    recce = get_company_scoped_document_or_404('recce', recce_id, 'recce', current_user['company_id'])
     return serialize_document(recce)
 
 
 @router.put("/{recce_id}", response_model=RecceResponse)
-def update_recce(recce_id: str, payload: RecceUpdate) -> dict[str, Any]:
-    recce = get_document_or_404("recce", recce_id, "recce")
+def update_recce(recce_id: str, payload: RecceUpdate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FIELD)
+    recce = get_company_scoped_document_or_404('recce', recce_id, 'recce', current_user['company_id'])
     request_id = str(recce["request_id"])
 
     existing_boq = get_collection("boq").find_one({"request_id": recce["request_id"]})
@@ -88,15 +97,17 @@ def update_recce(recce_id: str, payload: RecceUpdate) -> dict[str, Any]:
         {"$set": update_fields},
     )
 
-    updated_recce = get_document_or_404("recce", recce_id, "recce")
+    updated_recce = get_company_scoped_document_or_404('recce', recce_id, 'recce', current_user['company_id'])
     sync_request_workflow_state(request_id)
     publish_workflow_event("recce", "updated", request_id, {"recce_id": recce_id})
     return serialize_document(updated_recce)
 
 
 @router.delete("/{recce_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_recce(recce_id: str) -> Response:
-    recce = get_document_or_404("recce", recce_id, "recce")
+def delete_recce(recce_id: str, request: Request) -> Response:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FIELD)
+    recce = get_company_scoped_document_or_404('recce', recce_id, 'recce', current_user['company_id'])
     request_id = str(recce["request_id"])
 
     get_collection("invoices").delete_many({"request_id": recce["request_id"]})

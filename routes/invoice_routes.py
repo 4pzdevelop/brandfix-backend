@@ -3,17 +3,19 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from db_utils import (
+    build_company_scoped_query,
+    get_company_scoped_document_or_404,
+    get_company_scoped_request_or_404,
     get_collection,
-    get_document_or_404,
-    get_request_or_404,
-    parse_object_id,
     serialize_document,
     sync_request_workflow_state,
 )
+from middleware.auth_middleware import get_current_user, require_roles
 from models.invoice_model import InvoiceCreate, InvoiceResponse, InvoiceUpdate
+from models.user_model import UserRole
 from services.notification_service import publish_workflow_event
 
 
@@ -34,9 +36,11 @@ def generate_invoice_number(request_id: str) -> str:
 
 
 @router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
-def create_invoice(payload: InvoiceCreate) -> dict[str, Any]:
-    get_request_or_404(payload.request_id)
-    request_object_id = parse_object_id(payload.request_id, "request")
+def create_invoice(payload: InvoiceCreate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FINANCE)
+    request_document = get_company_scoped_request_or_404(payload.request_id, current_user['company_id'])
+    request_object_id = request_document['_id']
 
     boq = get_collection("boq").find_one({"request_id": request_object_id})
     if boq is None or boq.get("approval_status") != "approved":
@@ -95,25 +99,27 @@ def create_invoice(payload: InvoiceCreate) -> dict[str, Any]:
 
 @router.get("", response_model=list[InvoiceResponse])
 def list_invoices(
+    request: Request,
     request_id: str | None = Query(default=None, alias="requestId"),
 ) -> list[dict[str, Any]]:
-    query: dict[str, Any] = {}
-    if request_id:
-        query["request_id"] = parse_object_id(request_id, "request")
-
+    current_user = get_current_user(request)
+    query = build_company_scoped_query(current_user['company_id'], request_id)
     cursor = get_collection("invoices").find(query).sort("created_at", -1)
     return [serialize_document(document) for document in cursor]
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
-def get_invoice(invoice_id: str) -> dict[str, Any]:
-    invoice = get_document_or_404("invoices", invoice_id, "invoice")
+def get_invoice(invoice_id: str, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    invoice = get_company_scoped_document_or_404('invoices', invoice_id, 'invoice', current_user['company_id'])
     return serialize_document(invoice)
 
 
 @router.put("/{invoice_id}", response_model=InvoiceResponse)
-def update_invoice(invoice_id: str, payload: InvoiceUpdate) -> dict[str, Any]:
-    invoice = get_document_or_404("invoices", invoice_id, "invoice")
+def update_invoice(invoice_id: str, payload: InvoiceUpdate, request: Request) -> dict[str, Any]:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FINANCE)
+    invoice = get_company_scoped_document_or_404('invoices', invoice_id, 'invoice', current_user['company_id'])
     request_id = str(invoice["request_id"])
     boq = get_collection("boq").find_one({"_id": invoice["boq_id"]})
 
@@ -147,15 +153,17 @@ def update_invoice(invoice_id: str, payload: InvoiceUpdate) -> dict[str, Any]:
         {"$set": update_fields},
     )
 
-    updated_invoice = get_document_or_404("invoices", invoice_id, "invoice")
+    updated_invoice = get_company_scoped_document_or_404('invoices', invoice_id, 'invoice', current_user['company_id'])
     sync_request_workflow_state(request_id)
     publish_workflow_event("invoice", "updated", request_id, {"invoice_id": invoice_id})
     return serialize_document(updated_invoice)
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_invoice(invoice_id: str) -> Response:
-    invoice = get_document_or_404("invoices", invoice_id, "invoice")
+def delete_invoice(invoice_id: str, request: Request) -> Response:
+    current_user = get_current_user(request)
+    require_roles(current_user, UserRole.ADMIN, UserRole.FINANCE)
+    invoice = get_company_scoped_document_or_404('invoices', invoice_id, 'invoice', current_user['company_id'])
     request_id = str(invoice["request_id"])
 
     get_collection("invoices").delete_one({"_id": invoice["_id"]})
