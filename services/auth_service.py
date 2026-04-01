@@ -19,10 +19,7 @@ load_dotenv()
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
 JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '60'))
-DEFAULT_BOOTSTRAP_ADMIN_EMAIL = 'admin@test.com'
-DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = '12345678'
-DEFAULT_BOOTSTRAP_ADMIN_COMPANY_ID = 'brandfix-default'
-DEFAULT_REGISTER_COMPANY_ID = os.getenv('DEFAULT_REGISTER_COMPANY_ID') or DEFAULT_BOOTSTRAP_ADMIN_COMPANY_ID
+DEFAULT_REGISTER_COMPANY_ID = os.getenv('DEFAULT_REGISTER_COMPANY_ID') or 'brandfix-default'
 DEFAULT_REGISTER_ROLE = UserRole.CLIENT.value
 
 if not JWT_SECRET_KEY:
@@ -106,6 +103,7 @@ def create_access_token(user: dict[str, Any]) -> tuple[str, int]:
     payload = {
         'sub': str(user['_id']),
         'userId': str(user['_id']),
+        'email': user['email'],
         'role': user['role'],
         'companyId': user['company_id'],
         'exp': expires_at,
@@ -123,7 +121,7 @@ def decode_access_token(token: str) -> dict[str, Any]:
             detail='Invalid or expired token.',
         ) from exc
 
-    required_fields = ('userId', 'role', 'companyId')
+    required_fields = ('userId', 'email', 'role', 'companyId')
     if any(field not in payload for field in required_fields):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -134,9 +132,12 @@ def decode_access_token(token: str) -> dict[str, Any]:
 
 
 def ensure_bootstrap_admin() -> None:
-    email = os.getenv('BOOTSTRAP_ADMIN_EMAIL') or DEFAULT_BOOTSTRAP_ADMIN_EMAIL
-    password = os.getenv('BOOTSTRAP_ADMIN_PASSWORD') or DEFAULT_BOOTSTRAP_ADMIN_PASSWORD
-    company_id = os.getenv('BOOTSTRAP_ADMIN_COMPANY_ID') or DEFAULT_BOOTSTRAP_ADMIN_COMPANY_ID
+    email = os.getenv('BOOTSTRAP_ADMIN_EMAIL')
+    password = os.getenv('BOOTSTRAP_ADMIN_PASSWORD')
+    company_id = os.getenv('BOOTSTRAP_ADMIN_COMPANY_ID')
+
+    if not all([email, password, company_id]):
+        return
 
     normalized_email = normalize_email(email)
     existing_user = users_collection.find_one({'email': normalized_email})
