@@ -1,9 +1,26 @@
 import type { Request, Response } from "express";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { ok } from "../utils/http";
 
 function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function queryParam(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    const first = value.find((item) => typeof item === "string");
+    if (typeof first !== "string") {
+      return undefined;
+    }
+    const normalized = first.trim();
+    return normalized.length > 0 ? normalized : undefined;
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function serializeRequest(request: {
@@ -63,8 +80,27 @@ function normalizeRequestPayload(
 }
 
 export async function listRequests(req: Request, res: Response) {
+  const authCompanyId = req.auth!.companyId;
+  const requestedCompanyId = queryParam(req.query.companyId);
+  const requestedCompanyName = queryParam(req.query.companyName);
+  const requestedStatus = queryParam(req.query.status);
+
+  // Tenant-safe default. A mismatched companyId never escalates scope.
+  const effectiveCompanyId =
+    requestedCompanyId && requestedCompanyId === authCompanyId
+      ? requestedCompanyId
+      : authCompanyId;
+
+  const where: Prisma.RequestWhereInput = { companyId: effectiveCompanyId };
+  if (requestedCompanyName) {
+    where.companyName = requestedCompanyName;
+  }
+  if (requestedStatus) {
+    where.status = requestedStatus;
+  }
+
   const requests = await prisma.request.findMany({
-    where: { companyId: req.auth!.companyId },
+    where,
     orderBy: { createdAt: "desc" },
   });
   return ok(res, requests.map(serializeRequest));
