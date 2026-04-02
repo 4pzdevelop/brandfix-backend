@@ -60,34 +60,33 @@ function buildAuthResponse(user: {
   };
 }
 
-authRouter.post(
-  "/login",
-  validateBody(loginSchema),
-  asyncHandler(async (req, res) => {
-    const user = await prisma.user.findUnique({
-      where: { email: req.body.email },
-      include: { client: true, company: true },
-    });
+const loginHandler = asyncHandler(async (req, res) => {
+  const user = await prisma.user.findUnique({
+    where: { email: req.body.email },
+    include: { client: true, company: true },
+  });
 
-    if (!user || !user.isActive) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+  if (!user || !user.isActive) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
 
-    if (
-      req.body.companyCode &&
-      user.company.code.toUpperCase() !== req.body.companyCode.toUpperCase()
-    ) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+  if (
+    req.body.companyCode &&
+    user.company.code.toUpperCase() !== req.body.companyCode.toUpperCase()
+  ) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
 
-    const matches = await bcrypt.compare(req.body.password, user.passwordHash);
-    if (!matches) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
+  const matches = await bcrypt.compare(req.body.password, user.passwordHash);
+  if (!matches) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
 
-    return ok(res, buildAuthResponse(user));
-  }),
-);
+  return ok(res, buildAuthResponse(user));
+});
+
+authRouter.post("/login", validateBody(loginSchema), loginHandler);
+authRouter.post("/admin-login", validateBody(loginSchema), loginHandler);
 
 authRouter.post(
   "/register",

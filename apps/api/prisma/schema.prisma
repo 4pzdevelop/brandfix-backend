@@ -255,6 +255,7 @@ model Company {
   receivables              Receivable[]
   exportLogs               ExportLog[]
   billingTemplates         BillingTemplate[]
+  workflowState            WorkflowState?
 }
 
 model User {
@@ -303,8 +304,22 @@ model User {
   createdProjects               Project[]          @relation("ProjectCreator")
   ledgerEntries                 ProjectLedger[]    @relation("LedgerEntryCreator")
   exportedLogs                  ExportLog[]        @relation("ExportedBy")
+  workflowStateUpdates          WorkflowState[]    @relation("WorkflowStateUpdatedBy")
 
   @@index([companyId, role])
+}
+
+model WorkflowState {
+  id          String   @id @default(cuid())
+  companyId   String   @unique
+  state       Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  updatedBy   User?    @relation("WorkflowStateUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([updatedById])
 }
 
 model Request {

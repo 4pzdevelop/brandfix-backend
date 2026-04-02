@@ -10,15 +10,35 @@ import {
   updateRequest,
 } from "../controllers/requests.controller";
 
-const createRequestSchema = z.object({
-  companyName: z.string().min(2),
-  issueTitle: z.string().min(3),
-  description: z.string().min(5),
+const createRequestSchema = z
+  .object({
+    companyId: z.string().min(1).optional(),
+    companyName: z.string().min(2).optional(),
+    issueTitle: z.string().min(3).optional(),
+    title: z.string().min(3).optional(),
+    description: z.string().min(5),
+    category: z.string().min(2).optional(),
+    status: z.string().min(2).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.issueTitle && !value.title) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Either issueTitle or title is required",
+        path: ["issueTitle"],
+      });
+    }
+  });
+
+const updateRequestSchema = z.object({
+  companyId: z.string().min(1).optional(),
+  companyName: z.string().min(2).optional(),
+  issueTitle: z.string().min(3).optional(),
+  title: z.string().min(3).optional(),
+  description: z.string().min(5).optional(),
   category: z.string().min(2).optional(),
   status: z.string().min(2).optional(),
 });
-
-const updateRequestSchema = createRequestSchema.partial();
 
 export const requestsRouter = Router();
 
