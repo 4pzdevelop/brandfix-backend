@@ -20,6 +20,7 @@ import { requestsRouter } from "./routes/requests.routes";
 import { storesRouter } from "./routes/stores.routes";
 import { teamRouter } from "./routes/team.routes";
 import { tasksRouter } from "./routes/tasks.routes";
+import { workflowStateRouter } from "./routes/workflow-state.routes";
 
 export const app = express();
 
@@ -55,5 +56,6 @@ app.use("/api/v1/audits", auditsRouter);
 app.use("/api/v1/reports", reportsRouter);
 app.use("/api/v1/team", teamRouter);
 app.use("/api/v1/chat", chatRouter);
+app.use("/api/v1/brandfix/workflow-state", workflowStateRouter);
 
 app.use(errorHandler);
